@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>鋼琴節奏遊戲</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body,html { width:100%; height:100%; overflow:hidden; background:#000; font-family:Arial,sans-serif; color:#fff; }
+
+/* ── 主選單 ── */
+#menu {
+  width:100vw; height:100vh;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  background:radial-gradient(ellipse at center, #1a1a2e 0%, #000 70%);
+}
+.menu-title { font-size:42px; font-weight:bold; color:#ffeb3b; text-shadow:0 0 20px #ffeb3b88; margin-bottom:8px; }
+.menu-sub   { font-size:16px; color:#888; margin-bottom:60px; }
+.song-list  { display:flex; flex-direction:column; gap:20px; width:500px; }
+.song-card  {
+  background:#111; border:2px solid #333; border-radius:14px;
+  padding:20px 28px; cursor:pointer;
+  display:flex; align-items:center; gap:20px;
+  transition:all 0.2s;
+}
+.song-card:hover { border-color:#ffeb3b; background:#1a1a00; transform:translateX(6px); }
+.song-icon  { font-size:36px; }
+.song-info  { flex:1; }
+.song-name  { font-size:22px; font-weight:bold; color:#fff; }
+.song-desc  { font-size:13px; color:#888; margin-top:4px; }
+.song-diff  { font-size:12px; padding:3px 10px; border-radius:99px; font-weight:bold; }
+.diff-easy  { background:#1b5e20; color:#69f0ae; }
+.diff-hard  { background:#b71c1c; color:#ff8a80; }
+
+/* ── 遊戲畫面 ── */
+#game { display:none; width:100vw; height:100vh; flex-direction:column; align-items:center; justify-content:center; }
+.g-header { width:560px; display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; }
+.score-board { font-size:26px; color:#ffeb3b; font-weight:bold; }
+.lives-board { font-size:22px; color:#ff5252; }
+.song-title-disp { font-size:14px; color:#aaa; text-align:center; }
+#gc {
+  position:relative; width:560px; height:55vh;
+  border:4px solid #333; overflow:hidden;
+  box-shadow:0 8px 32px rgba(0,0,0,0.8);
+}
+.jline { position:absolute; bottom:60px; width:100%; height:3px; pointer-events:none; }
+.hit-flash { position:absolute; bottom:56px; width:100%; height:12px; pointer-events:none; opacity:0; }
+.combo-display {
+  position:absolute; top:16px; right:16px; font-size:30px; font-weight:bold;
+  color:#ffeb3b; text-shadow:0 0 12px #ffeb3b; opacity:0; transition:opacity 0.3s; z-index:20;
+}
+.keyboard { display:flex; background:#222; padding:12px; border-radius:8px; margin-top:16px; gap:6px; }
+.key {
+  width:70px; height:140px;
+  background:linear-gradient(180deg,#fff 0%,#f0f0f0 100%);
+  border:2px solid #999; border-radius:0 0 8px 8px;
+  cursor:pointer; display:flex; flex-direction:column;
+  justify-content:space-between; align-items:center;
+  padding:12px 0; font-weight:bold;
+  transition:all 0.08s; user-select:none;
+  box-shadow:0 4px 8px rgba(0,0,0,0.3);
+}
+.key-note { font-size:13px; color:#999; margin-top:4px; }
+.key-label { font-size:18px; color:#333; margin-bottom:8px; }
+.key.active { transform:translateY(6px); box-shadow:0 2px 4px rgba(0,0,0,0.5); }
+.note-block { position:absolute; width:70px; height:32px; border-radius:6px; z-index:10; }
+.star { position:absolute; width:3px; height:3px; background:#fff; border-radius:50%; opacity:0.5; animation:twinkle 2s infinite; }
+@keyframes twinkle { 0%,100%{opacity:0.2} 50%{opacity:1} }
+.controls { margin-top:16px; display:flex; gap:12px; }
+button { padding:12px 28px; font-size:16px; cursor:pointer; border:none; border-radius:10px; color:#fff; font-weight:bold; transition:transform 0.1s; }
+button:active { transform:scale(0.95); }
+.btn-green  { background:#4caf50; }
+.btn-orange { background:#ff9800; }
+.btn-gray   { background:#555; }
+#overlay {
+  display:none; position:absolute; top:0; left:0; width:100%; height:100%;
+  background:rgba(0,0,0,0.95); color:#fff;
+  flex-direction:column; justify-content:center; align-items:center; z-index:100;
+}
+.hit-text {
+  position:absolute; font-size:20px; font-weight:bold;
+  pointer-events:none; z-index:30; animation:floatUp 0.7s forwards;
+}
+@keyframes floatUp { 0%{opacity:1;transform:translateY(0)} 100%{opacity:0;transform:translateY(-50px)} }
+.speed-bar-wrap { width:560px; margin-top:12px; }
+.speed-bar-bg { width:100%; height:10px; background:#222; border-radius:5px; overflow:hidden; border:1px solid #333; }
+.speed-bar-fill { height:100%; border-radius:4px; transition:width 0.5s; }
+.speed-label { display:flex; justify-content:space-between; font-size:12px; color:#666; margin-top:4px; }
+</style>
+</head>
+<body>
+
+<!-- 主選單 -->
+<div id="menu">
+  <div class="menu-title">🎹 鋼琴節奏遊戲</div>
+  <div class="menu-sub">選擇一首歌曲開始演奏</div>
+  <div class="song-list">
+    <div class="song-card" onclick="selectSong('free')">
+      <div class="song-icon">🎵</div>
+      <div class="song-info">
+        <div class="song-name">自由旋律</div>
+        <div class="song-desc">隨機生成音符 · BPM 60 → 160</div>
+      </div>
+      <div class="song-diff diff-hard">挑戰</div>
+    </div>
+    <div class="song-card" onclick="selectSong('twinkle')">
+      <div class="song-icon">⭐</div>
+      <div class="song-info">
+        <div class="song-name">小星星</div>
+        <div class="song-desc">Twinkle Twinkle Little Star · BPM 60 → 120</div>
+      </div>
+      <div class="song-diff diff-easy">入門</div>
+    </div>
+    <div class="song-card" onclick="selectSong('mozart')">
+      <div class="song-icon">🎼</div>
+      <div class="song-info">
+        <div class="song-name">小星星變奏曲</div>
+        <div class="song-desc">Mozart K.265 · 主題 + 四段變奏 · BPM 60 → 160</div>
+      </div>
+      <div class="song-diff diff-hard">困難</div>
+    </div>
+    <div class="song-card" onclick="selectSong('moonlight')">
+      <div class="song-icon">🌕</div>
+      <div class="song-info">
+        <div class="song-name">月光奏鳴曲</div>
+        <div class="song-desc">Beethoven Op.27 No.2 · 第一樂章 · BPM 50 → 100</div>
+      </div>
+      <div class="song-diff diff-easy">抒情</div>
+    </div>
+  </div>
+</div>
+
+<!-- 遊戲畫面 -->
+<div id="game">
+  <div class="g-header">
+    <div class="score-board">得分: <span id="score">0</span></div>
+    <div class="song-title-disp" id="song-title-disp">—</div>
+    <div class="lives-board">生命: <span id="lives">❤️❤️❤️</span></div>
+  </div>
+  <div id="gc">
+    <div class="jline" id="jline"></div>
+    <div class="hit-flash" id="hit-flash"></div>
+    <div class="combo-display" id="combo-disp"></div>
+    <div id="overlay">
+      <div id="overlay-ready">
+        <div id="ready-icon" style="font-size:60px;margin-bottom:12px"></div>
+        <h2 id="ready-title" style="font-size:28px;margin-bottom:6px"></h2>
+        <p id="ready-desc" style="font-size:14px;color:#aaa;margin-bottom:28px"></p>
+        <button class="btn-green" onclick="startGame()" style="font-size:20px;padding:16px 48px">開始遊戲</button>
+      </div>
+      <div id="overlay-gameover" style="display:none;flex-direction:column;align-items:center">
+        <h2 style="font-size:34px;margin-bottom:10px">GAME OVER</h2>
+        <p style="font-size:22px">最終得分: <span id="final-score">0</span></p>
+        <p style="font-size:14px;color:#aaa;margin-bottom:20px">最高連擊: <span id="final-combo">0</span></p>
+        <div style="display:flex;gap:12px">
+          <button class="btn-green" onclick="restartGame()">再玩一次</button>
+          <button class="btn-gray"  onclick="goMenu()">返回選單</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="keyboard" id="keyboard"></div>
+  <div class="speed-bar-wrap">
+    <div class="speed-bar-bg"><div class="speed-bar-fill" id="speed-fill" style="width:0%"></div></div>
+    <div class="speed-label"><span id="bpm-min-label">BPM 60</span><span id="combo-label">連擊: <span id="combo">0</span></span><span id="bpm-max-label">BPM 160</span></div>
+  </div>
+  <div class="controls">
+    <button class="btn-orange" id="pause-btn" onclick="togglePause()">暫停</button>
+    <button class="btn-gray" onclick="goMenu()">返回選單</button>
+  </div>
+</div>
+
+<script>
+// ── 歌曲資料庫 ────────────────────────────────────────
+// 旋律格式：[音符, 拍數]，null 表示休止符
+const SONGS = {
+  free: {
+    name: '自由旋律',
+    icon: '🎵',
+    bgColor: '#0d1a0d',
+    jlineColor: 'rgba(3,169,244,0.4)',
+    flashColor: 'rgba(3,169,244,0.6)',
+    fillGradient: 'linear-gradient(90deg,#4caf50,#03a9f4,#ff5252)',
+    noteColors: {'C':'#03a9f4','D':'#ab47bc','E':'#26a69a','F':'#ef5350','G':'#ff7043','A':'#66bb6a','B':'#ffca28'},
+    keyActiveColor: '#b3e5fc',
+    bpmMin: 60, bpmMax: 160, rampSecs: 120,
+    melody: [
+      ['E',1],['D',1],['C',2],['D',1],['E',1],['E',2],
+      ['D',1],['D',1],['D',2],['E',1],['G',2],
+      ['E',1],['D',1],['C',2],['D',1],['E',1],['E',1],['E',1],
+      ['D',1],['D',1],['E',1],['D',1],['C',4],
+    ],
+    random: true,
+    stars: false
+  },
+  twinkle: {
+    name: '⭐ 小星星',
+    icon: '⭐',
+    bgColor: '#0a0a1a',
+    jlineColor: 'rgba(255,215,0,0.4)',
+    flashColor: 'rgba(255,215,0,0.6)',
+    fillGradient: 'linear-gradient(90deg,#4caf50,#ffeb3b,#ffd700)',
+    noteColors: {'C':'#ffd700','D':'#ffeb3b','E':'#fff59d','F':'#ffecb3','G':'#ffe082','A':'#ffd54f','B':'#ffca28'},
+    keyActiveColor: '#fff9c4',
+    bpmMin: 60, bpmMax: 120, rampSecs: 90,
+    melody: [
+      ['C',1],['C',1],['G',1],['G',1],['A',1],['A',1],['G',2],
+      ['F',1],['F',1],['E',1],['E',1],['D',1],['D',1],['C',2],
+      ['G',1],['G',1],['F',1],['F',1],['E',1],['E',1],['D',2],
+      ['G',1],['G',1],['F',1],['F',1],['E',1],['E',1],['D',2],
+      ['C',1],['C',1],['G',1],['G',1],['A',1],['A',1],['G',2],
+      ['F',1],['F',1],['E',1],['E',1],['D',1],['D',1],['C',2],
+    ],
+    random: false,
+    stars: true,
+    hitLabel: '⭐'
+  },
+  mozart: {
+    name: '🎼 小星星變奏曲',
+    icon: '🎼',
+    bgColor: '#0a0a1a',
+    jlineColor: 'rgba(255,215,0,0.4)',
+    flashColor: 'rgba(255,215,0,0.6)',
+    fillGradient: 'linear-gradient(90deg,#4caf50,#ffeb3b,#ff5252)',
+    noteColors: {'C':'#ffd700','D':'#ffeb3b','E':'#fff59d','F':'#ffecb3','G':'#ffe082','A':'#ffd54f','B':'#ffca28'},
+    keyActiveColor: '#fff9c4',
+    bpmMin: 60, bpmMax: 160, rampSecs: 120,
+    melody: [
+      // 主題
+      ['C',1],['C',1],['G',1],['G',1],['A',1],['A',1],['G',2],
+      ['F',1],['F',1],['E',1],['E',1],['D',1],['D',1],['C',2],
+      ['G',1],['G',1],['F',1],['F',1],['E',1],['E',1],['D',2],
+      ['G',1],['G',1],['F',1],['F',1],['E',1],['E',1],['D',2],
+      ['C',1],['C',1],['G',1],['G',1],['A',1],['A',1],['G',2],
+      ['F',1],['F',1],['E',1],['E',1],['D',1],['D',1],['C',4],
+      // Var I 快速音群（都是短音）
+      ['C',1],['D',1],['E',1],['F',1],['G',1],['A',1],['G',2],
+      ['F',1],['G',1],['A',1],['G',1],['F',1],['E',1],['D',1],['C',1],
+      ['G',1],['A',1],['B',1],['A',1],['G',1],['F',1],['E',1],['D',1],
+      ['G',1],['A',1],['B',1],['A',1],['G',1],['F',1],['E',1],['D',1],
+      ['C',1],['D',1],['E',1],['F',1],['G',1],['A',1],['G',2],
+      ['F',1],['G',1],['A',1],['G',1],['F',1],['E',1],['D',1],['C',4],
+      // Var II 三連音（中長音）
+      ['C',1],['E',1],['G',1],['C',1],['E',1],['G',1],['A',1],['G',1],
+      ['F',1],['A',1],['C',1],['F',1],['E',1],['G',1],['C',2],
+      ['G',1],['B',1],['D',1],['G',1],['F',1],['A',1],['E',2],
+      ['C',1],['E',1],['G',1],['C',1],['E',1],['G',1],['A',1],['G',1],
+      ['F',1],['A',1],['C',1],['F',1],['E',1],['G',1],['C',4],
+      // Coda（長音結尾）
+      ['C',1],['E',1],['G',2],['C',1],['E',1],['G',2],
+      ['F',1],['A',1],['C',2],['F',1],['A',1],['C',2],
+      ['C',4],['G',2],['C',4],
+    ],
+    random: false,
+    stars: true,
+    hitLabel: '⭐'
+  },
+  moonlight: {
+    name: '🌕 月光奏鳴曲',
+    icon: '🌕',
+    bgColor: '#050510',
+    jlineColor: 'rgba(180,200,255,0.4)',
+    flashColor: 'rgba(180,200,255,0.6)',
+    fillGradient: 'linear-gradient(90deg,#1a237e,#5c6bc0,#b3beff)',
+    noteColors: {'C':'#7986cb','D':'#5c6bc0','E':'#9fa8da','F':'#7986cb','G':'#5c6bc0','A':'#9fa8da','B':'#c5cae9'},
+    keyActiveColor: '#e8eaf6',
+    bpmMin: 50, bpmMax: 100, rampSecs: 120,
+    melody: [
+      // 三連音琶音 + 長旋律音
+      ['E',1],['G',1],['C',1],['E',3],
+      ['D',1],['G',1],['B',1],['D',3],
+      ['C',1],['G',1],['C',1],['E',3],
+      ['B',1],['G',1],['B',1],['D',3],
+      // 旋律線條
+      ['C',2],['E',2],['G',2],['A',2],
+      ['F',2],['A',2],['C',2],['B',2],
+      ['G',2],['B',2],['D',2],['E',2],
+      ['C',4],['G',2],['E',2],
+      // 發展段（短音密集）
+      ['E',1],['F',1],['G',1],['A',1],['B',1],['C',1],['D',1],['E',1],
+      ['F',1],['E',1],['D',1],['C',1],['B',1],['A',1],['G',1],['F',1],
+      ['E',1],['G',1],['B',1],['E',3],
+      ['D',1],['F',1],['B',1],['D',3],
+      // 再現主題
+      ['C',1],['E',1],['G',1],['C',3],
+      ['B',1],['D',1],['G',1],['B',3],
+      ['A',1],['C',1],['E',1],['A',3],
+      ['G',1],['B',1],['D',1],['G',3],
+      // 高潮
+      ['C',1],['D',1],['E',1],['F',1],['G',1],['A',1],['B',1],['C',1],
+      ['B',1],['A',1],['G',1],['F',1],['E',1],['D',1],['C',1],['B',1],
+      // 尾奏（長音漸弱）
+      ['C',2],['E',2],['G',4],
+      ['E',2],['G',2],['C',4],
+      ['C',8],
+    ],
+    random: false,
+    stars: true,
+    hitLabel: '🌕'
+  }
+};
+
+const NOTES = ['C','D','E','F','G','A','B'];
+const NOTE_NAMES = ['Do','Re','Mi','Fa','So','La','Si'];
+const KEY_MAP = {'a':'C','s':'D','d':'E','f':'F','g':'G','h':'A','j':'B'};
+const KEY_LABELS = ['A','S','D','F','G','H','J'];
+const NOTE_FREQS = {'C':261.63,'D':293.66,'E':329.63,'F':349.23,'G':392,'A':440,'B':493.88};
+
+let currentSong = null;
+let score=0, lives=3, combo=0, maxCombo=0;
+let gameActive=false, isPaused=false;
+let activeBlocks=[];
+let simTime=0, lastTs=null, nextBeat=0, melodyIdx=0;
+let animId=null;
+let audioCtx=null;
+
+const gc       = document.getElementById('gc');
+const scoreEl  = document.getElementById('score');
+const livesEl  = document.getElementById('lives');
+const overlay  = document.getElementById('overlay');
+const comboDp  = document.getElementById('combo-disp');
+const comboEl  = document.getElementById('combo');
+const hitFlash = document.getElementById('hit-flash');
+const speedFill= document.getElementById('speed-fill');
+const jline    = document.getElementById('jline');
+
+// ── 選歌 ────────────────────────────────────────────
+function selectSong(id) {
+  currentSong = SONGS[id];
+  document.getElementById('menu').style.display = 'none';
+  document.getElementById('game').style.display = 'flex';
+  document.getElementById('song-title-disp').innerText = currentSong.name;
+  document.getElementById('bpm-min-label').innerText = 'BPM ' + currentSong.bpmMin;
+  document.getElementById('bpm-max-label').innerText = 'BPM ' + currentSong.bpmMax;
+  speedFill.style.background = currentSong.fillGradient;
+  gc.style.background = currentSong.bgColor;
+  jline.style.background = currentSong.jlineColor;
+  jline.style.boxShadow = '0 0 10px ' + currentSong.jlineColor;
+  hitFlash.style.background = currentSong.flashColor;
+  buildKeyboard();
+  createStars();
+  // 顯示準備畫面
+  document.getElementById('ready-icon').innerText = currentSong.icon;
+  document.getElementById('ready-title').innerText = currentSong.name;
+  document.getElementById('ready-desc').innerText =
+    'BPM ' + currentSong.bpmMin + ' → ' + currentSong.bpmMax + '　按「開始遊戲」或 Space 鍵開始';
+  document.getElementById('overlay-ready').style.display = 'flex';
+  document.getElementById('overlay-ready').style.flexDirection = 'column';
+  document.getElementById('overlay-ready').style.alignItems = 'center';
+  document.getElementById('overlay-gameover').style.display = 'none';
+  overlay.style.display = 'flex';
+}
+
+function goMenu() {
+  gameActive = false;
+  isPaused = false;
+  if(animId) cancelAnimationFrame(animId);
+  if(audioCtx){ audioCtx.close(); audioCtx=null; }
+  gc.querySelectorAll('.note-block,.hit-text,.star').forEach(b=>b.remove());
+  overlay.style.display = 'none';
+  document.getElementById('game').style.display = 'none';
+  document.getElementById('menu').style.display = 'flex';
+}
+
+// ── 音效 ────────────────────────────────────────────
+function getCtx(){
+  if(!audioCtx) audioCtx=new(window.AudioContext||window.webkitAudioContext)();
+  return audioCtx;
+}
+
+function playPianoNote(note, duration=0.9){
+  const ctx=getCtx();
+  const freq=NOTE_FREQS[note]||440;
+  const osc1=ctx.createOscillator(); osc1.type='sine'; osc1.frequency.value=freq;
+  const osc2=ctx.createOscillator(); osc2.type='sine'; osc2.frequency.value=freq*2;
+  const osc3=ctx.createOscillator(); osc3.type='sine'; osc3.frequency.value=freq*3;
+  const g1=ctx.createGain(), g2=ctx.createGain(), g3=ctx.createGain(), master=ctx.createGain();
+  osc1.connect(g1); osc2.connect(g2); osc3.connect(g3);
+  g1.connect(master); g2.connect(master); g3.connect(master);
+  master.connect(ctx.destination);
+  const now=ctx.currentTime, v=0.28;
+  const dur=Math.max(duration, 0.3);
+  // 起音固定快，延音跟著 duration 拉長
+  g1.gain.setValueAtTime(0,now); g1.gain.linearRampToValueAtTime(v,now+0.008);
+  g1.gain.exponentialRampToValueAtTime(v*0.7,now+0.1);
+  g1.gain.setValueAtTime(v*0.7, now+dur*0.8);
+  g1.gain.exponentialRampToValueAtTime(0.001,now+dur+0.15);
+  g2.gain.setValueAtTime(0,now); g2.gain.linearRampToValueAtTime(v*0.15,now+0.01);
+  g2.gain.exponentialRampToValueAtTime(0.001,now+dur*0.7);
+  g3.gain.setValueAtTime(0,now); g3.gain.linearRampToValueAtTime(v*0.08,now+0.015);
+  g3.gain.exponentialRampToValueAtTime(0.001,now+dur*0.5);
+  osc1.start(now); osc1.stop(now+dur+0.2);
+  osc2.start(now); osc2.stop(now+dur*0.8);
+  osc3.start(now); osc3.stop(now+dur*0.6);
+}
+
+function playMiss(){
+  const ctx=getCtx();
+  const osc=ctx.createOscillator(), g=ctx.createGain();
+  osc.connect(g); g.connect(ctx.destination);
+  osc.type='sawtooth'; osc.frequency.value=95;
+  g.gain.setValueAtTime(0.1,ctx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+0.22);
+  osc.start(); osc.stop(ctx.currentTime+0.22);
+}
+
+// ── 鍵盤 ────────────────────────────────────────────
+function buildKeyboard(){
+  const kb=document.getElementById('keyboard');
+  kb.innerHTML='';
+  NOTES.forEach((n,i)=>{
+    const k=document.createElement('div');
+    k.className='key'; k.id='key-'+n;
+    k.style.borderBottom='6px solid '+currentSong.noteColors[n];
+    const nl=document.createElement('div'); nl.className='key-note'; nl.innerText=NOTE_NAMES[i];
+    const kl=document.createElement('div'); kl.className='key-label'; kl.innerText=KEY_LABELS[i];
+    k.appendChild(nl); k.appendChild(kl);
+    k.addEventListener('mousedown',()=>handleInput(n));
+    kb.appendChild(k);
+  });
+}
+
+// ── 星星 ─────────────────────────────────────────────
+function createStars(){
+  gc.querySelectorAll('.star').forEach(s=>s.remove());
+  if(!currentSong.stars) return;
+  for(let i=0;i<50;i++){
+    const s=document.createElement('div'); s.className='star';
+    s.style.left=Math.random()*100+'%'; s.style.top=Math.random()*100+'%';
+    s.style.animationDelay=Math.random()*2+'s';
+    gc.appendChild(s);
+  }
+}
+
+// ── 方塊 ────────────────────────────────────────────
+const BASE_BLOCK_H = 32; // 1 拍的高度
+function spawnNote(note, beats){
+  const idx=NOTES.indexOf(note);
+  const blockH = BASE_BLOCK_H * beats;
+  const el=document.createElement('div'); el.className='note-block';
+  el.style.left=(14+idx*76)+'px'; el.style.top='0px';
+  el.style.height=blockH+'px';
+  el.style.background=currentSong.noteColors[note];
+  el.style.boxShadow='0 0 12px '+currentSong.noteColors[note]+'99';
+  // 長音加上漸層讓視覺更豐富
+  if(beats>=2){
+    el.style.background='linear-gradient(180deg,'+currentSong.noteColors[note]+'ff,'+currentSong.noteColors[note]+'88)';
+  }
+  gc.appendChild(el);
+  activeBlocks.push({el, note, top:0, beats, blockH});
+}
+
+// ── 判定 ────────────────────────────────────────────
+function handleInput(note){
+  if(!gameActive||isPaused) return;
+  const keyEl=document.getElementById('key-'+note);
+  keyEl.classList.add('active');
+  keyEl.style.background='linear-gradient(180deg,'+currentSong.keyActiveColor+' 0%,#e0e0e0 100%)';
+  setTimeout(()=>{ keyEl.classList.remove('active'); keyEl.style.background=''; },120);
+
+  const idx=NOTES.indexOf(note);
+  const x=14+idx*76;
+  const judgeLineTop=gc.offsetHeight-60;
+
+  for(let i=0;i<activeBlocks.length;i++){
+    const b=activeBlocks[i];
+    if(b.note===note && b.top>judgeLineTop-80 && b.top<judgeLineTop+80){
+      const spb=60/getCurrentBpm();
+      playPianoNote(note, b.beats*spb);
+      gc.removeChild(b.el); activeBlocks.splice(i,1);
+      score+=10; scoreEl.innerText=score;
+      combo++; if(combo>maxCombo) maxCombo=combo;
+      comboEl.innerText=combo;
+      if(combo>=3){ comboDp.innerText=combo+'x'; comboDp.style.opacity=1; setTimeout(()=>comboDp.style.opacity=0,600); }
+      hitFlash.style.opacity=1; setTimeout(()=>hitFlash.style.opacity=0,80);
+      showHitText(currentSong.hitLabel||'HIT!', currentSong.stars?'#ffd700':'#ffeb3b', x);
+      return;
+    }
+  }
+  combo=0; comboEl.innerText=0;
+  showHitText('MISS','#ff5252',x);
+}
+
+function showHitText(label,color,x){
+  const t=document.createElement('div'); t.className='hit-text';
+  t.innerText=label; t.style.color=color; t.style.left=x+'px'; t.style.bottom='70px';
+  gc.appendChild(t);
+  setTimeout(()=>{ if(t.parentNode) gc.removeChild(t); },700);
+}
+
+// ── 主迴圈 ────────────────────────────────────────────
+function getCurrentBpm(){
+  const t=Math.min(simTime,currentSong.rampSecs);
+  return currentSong.bpmMin+(currentSong.bpmMax-currentSong.bpmMin)*(t/currentSong.rampSecs);
+}
+
+function updateGame(ts){
+  if(!gameActive||isPaused) return;
+  if(lastTs===null) lastTs=ts;
+  const dt=(ts-lastTs)/1000; lastTs=ts;
+  simTime+=dt;
+
+  const bpm=getCurrentBpm();
+  const spb=60/bpm;
+  const fallSpeed=0.35+(bpm-currentSong.bpmMin)/(currentSong.bpmMax-currentSong.bpmMin)*0.55;
+
+  speedFill.style.width=((bpm-currentSong.bpmMin)/(currentSong.bpmMax-currentSong.bpmMin)*100).toFixed(1)+'%';
+
+  const beat=simTime/spb; // 目前到第幾拍（浮點）
+  if(beat >= nextBeat){
+    const mel=currentSong.melody;
+    if(currentSong.random){
+      spawnNote(NOTES[Math.floor(Math.random()*NOTES.length)], 1);
+      nextBeat += 1;
+    } else {
+      const entry=mel[melodyIdx % mel.length];
+      if(entry){
+        const [note, beats]=entry;
+        spawnNote(note, beats);
+        nextBeat += beats; // 下一個音符等這個音符的拍數過完
+      } else {
+        nextBeat += 1; // 休止符佔一拍
+      }
+      melodyIdx++;
+    }
+  }
+
+  for(let i=activeBlocks.length-1;i>=0;i--){
+    const b=activeBlocks[i];
+    b.top+=fallSpeed; b.el.style.top=b.top+'px';
+    if(b.top>gc.offsetHeight-60){
+      gc.removeChild(b.el); activeBlocks.splice(i,1);
+      lives--; livesEl.innerText='❤️'.repeat(Math.max(0,lives));
+      combo=0; comboEl.innerText=0; comboDp.style.opacity=0;
+      playMiss();
+      if(lives<=0){ endGame(); return; }
+    }
+  }
+  animId=requestAnimationFrame(updateGame);
+}
+
+// ── 遊戲控制 ─────────────────────────────────────────
+function startGame(){
+  score=0; lives=3; combo=0; maxCombo=0;
+  simTime=0; lastTs=null; nextBeat=0; melodyIdx=0;
+  gameActive=true; isPaused=false; activeBlocks=[];
+  scoreEl.innerText='0'; livesEl.innerText='❤️❤️❤️';
+  comboEl.innerText='0'; comboDp.style.opacity=0;
+  overlay.style.display='none';
+  document.getElementById('overlay-ready').style.display='none';
+  document.getElementById('overlay-gameover').style.display='none';
+  document.getElementById('pause-btn').innerText='暫停';
+  gc.querySelectorAll('.note-block,.hit-text').forEach(b=>b.remove());
+  if(audioCtx){ audioCtx.close(); audioCtx=null; }
+  getCtx();
+  if(animId) cancelAnimationFrame(animId);
+  animId=requestAnimationFrame(updateGame);
+}
+
+function restartGame(){ startGame(); }
+
+function togglePause(){
+  if(!gameActive) return;
+  isPaused=!isPaused;
+  document.getElementById('pause-btn').innerText=isPaused?'繼續':'暫停';
+  if(!isPaused){ lastTs=null; animId=requestAnimationFrame(updateGame); }
+}
+
+function endGame(){
+  gameActive=false;
+  if(animId) cancelAnimationFrame(animId);
+  if(audioCtx){ audioCtx.close(); audioCtx=null; }
+  document.getElementById('final-score').innerText=score;
+  document.getElementById('final-combo').innerText=maxCombo;
+  document.getElementById('overlay-ready').style.display='none';
+  document.getElementById('overlay-gameover').style.display='flex';
+  overlay.style.display='flex';
+}
+
+window.addEventListener('keydown',e=>{
+  if(e.repeat) return;
+  const n=KEY_MAP[e.key.toLowerCase()];
+  if(n) handleInput(n);
+  if(e.code==='Space'){
+    e.preventDefault();
+    if(!gameActive && overlay.style.display==='flex' && document.getElementById('overlay-ready').style.display!=='none'){
+      startGame();
+    } else {
+      togglePause();
+    }
+  }
+  if(e.key==='Escape') goMenu();
+});
+</script>
+</body>
+</html>
